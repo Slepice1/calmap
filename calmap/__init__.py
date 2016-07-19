@@ -27,7 +27,7 @@ __contact__ = 'martijn@vermaat.name'
 __homepage__ = 'https://github.com/martijnvermaat/calmap'
 
 
-def yearplot(data, year=None, how='sum', vmin=None, vmax=None, cmap='Reds',
+def yearplot(data, year=None, sum_by='day', how='sum', vmin=None, vmax=None, cmap='Reds',
              fillcolor='whitesmoke', linewidth=1, linecolor=None,
              daylabels=calendar.day_abbr[:], dayticks=True,
              monthlabels=calendar.month_abbr[1:], monthticks=True, ax=None,
@@ -127,12 +127,6 @@ def yearplot(data, year=None, how='sum', vmin=None, vmax=None, cmap='Reds',
         # Sample by day.
         by_day = data.resample('D', how=how)
 
-    # Min and max per day.
-    if vmin is None:
-        vmin = by_day.min()
-    if vmax is None:
-        vmax = by_day.max()
-
     if ax is None:
         ax = plt.gca()
 
@@ -158,7 +152,9 @@ def yearplot(data, year=None, how='sum', vmin=None, vmax=None, cmap='Reds',
     by_day = pd.DataFrame({'data': by_day,
                            'fill': 1,
                            'day': by_day.index.dayofweek,
-                           'week': by_day.index.week})
+                           'week': by_day.index.week,
+                           'month': by_day.index.month,
+                           'year': by_day.index.year})
 
     # There may be some days assigned to previous year's last week or
     # next year's first week. We create new week numbers for them so
@@ -166,6 +162,23 @@ def yearplot(data, year=None, how='sum', vmin=None, vmax=None, cmap='Reds',
     by_day.loc[(by_day.index.month == 1) & (by_day.week > 50), 'week'] = 0
     by_day.loc[(by_day.index.month == 12) & (by_day.week < 10), 'week'] \
         = by_day.week.max() + 1
+
+    if sum_by == 'week':
+        linewidth = 0
+        grouped = by_day.groupby('week').sum()
+        for week in range(by_day.week.max() + 1):
+            by_day['data'][by_day['week'] == week] = grouped['data'][week]
+    elif sum_by == 'month':
+        linewidth = 0
+        grouped = by_day.groupby('month').sum()
+        for month in range(1,13):
+            by_day['data'][by_day['month'] == month] = grouped['data'][month]
+
+    # Min and max per day.
+    if vmin is None:
+        vmin = by_day['data'].min()
+    if vmax is None:
+        vmax = by_day['data'].max()
 
     # Pivot data on day and week and mask NaN days.
     plot_data = by_day.pivot('day', 'week', 'data').values[::-1]
@@ -186,6 +199,22 @@ def yearplot(data, year=None, how='sum', vmin=None, vmax=None, cmap='Reds',
     # Limit heatmap to our data.
     ax.set(xlim=(0, plot_data.shape[1]), ylim=(0, plot_data.shape[0]))
 
+
+
+    #Vertical lines dividing weeks
+    if sum_by == 'week':
+        ax.vlines(range(1, by_day.week.max() + 1), 0, 100, linewidth=2, color='white')
+    elif sum_by == 'month':
+        x_ratio = 1/(by_day.week.max()+1) #weeks in year
+        y_ratio = 1/7 #days in week
+        for i in range(1,13):
+            weekday = by_day[by_day['month'] == i]['day'][-1]
+            inverted_weekday = 6 - weekday
+            week = by_day[by_day['month'] == i]['week'][-1]
+            if inverted_weekday > 0:
+                ax.axhline(y=inverted_weekday, xmin=week*x_ratio, xmax=(week+1)*x_ratio, linewidth=2, color='white')
+            ax.axvline(x=week, ymin=0, ymax=inverted_weekday*y_ratio, linewidth=2, color='white')
+            ax.axvline(x=week+1, ymin=y_ratio*inverted_weekday, ymax=1, linewidth=2, color='white')
     # Square cells.
     ax.set_aspect('equal')
 
